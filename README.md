@@ -500,57 +500,7 @@ Refer to `MedTracker_BRD_v1.3.docx` for the complete API specification and permi
 
 ---
 
-## Contributing
-
-1. Fork the repository and create a feature branch from `main`.
-2. Follow all [Development Guidelines](#development-guidelines) strictly.
-3. Write unit tests for all new functionality.
-4. Ensure SonarQube analysis passes with no new critical/blocker issues.
-5. Submit a merge request with a clear description of changes.
-
-### GitLab Collaboration
-
-- [Invite team members and collaborators](https://docs.gitlab.com/user/project/members/)
-- [Create a new merge request](https://docs.gitlab.com/user/project/merge_requests/creating_merge_requests/)
-- [Enable merge request approvals](https://docs.gitlab.com/user/project/merge_requests/approvals/)
-- [Set up project integrations](https://pscode.lioncloud.net/sdecraft/trainings/leading-w-psai-products/batch-20/group-7/medtracker/-/settings/integrations)
-- [Get started with GitLab CI/CD](https://docs.gitlab.com/ci/quick_start/)
-- [Analyze your code with SAST](https://docs.gitlab.com/user/application_security/sast/)
-
----
-
-## Project status
-If you have run out of energy or time for your project, put a note at the top of the README saying that development has slowed down or stopped completely. Someone may choose to fork your project or volunteer to step in as a maintainer or owner, allowing your project to keep going. You can also make an explicit request for maintainers.
-
-1. Fork the repository and create a feature branch from `main`.
-2. Follow all [Development Guidelines](#development-guidelines) strictly.
-3. Write unit tests for all new functionality.
-4. Ensure SonarQube analysis passes with no new critical/blocker issues.
-5. Submit a merge request with a clear description of changes.
-
-### GitLab Collaboration
-
-- [Invite team members and collaborators](https://docs.gitlab.com/user/project/members/)
-- [Create a new merge request](https://docs.gitlab.com/user/project/merge_requests/creating_merge_requests/)
-- [Enable merge request approvals](https://docs.gitlab.com/user/project/merge_requests/approvals/)
-- [Set up project integrations](https://pscode.lioncloud.net/sdecraft/trainings/leading-w-psai-products/batch-20/group-7/medtracker/-/settings/integrations)
-- [Get started with GitLab CI/CD](https://docs.gitlab.com/ci/quick_start/)
-- [Analyze your code with SAST](https://docs.gitlab.com/user/application_security/sast/)
-
----
-
-## Repository
-
-**GitLab:** [https://pscode.lioncloud.net/sdecraft/trainings/leading-w-psai-products/batch-20/group-7/medtracker](https://pscode.lioncloud.net/sdecraft/trainings/leading-w-psai-products/batch-20/group-7/medtracker)
-
----
-
-## Authors
-
-- **Nagubilli Sadvika** – Project Lead & Architect
-- **Sunil Regar** – Project Lead & Architect
 
 
----
 
-*For questions or support, please open an issue in the GitLab repository.*
+
