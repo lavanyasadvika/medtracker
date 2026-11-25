@@ -1,0 +1,7 @@
+node_modules
+dist
+.slingshot
+.git
+.gitignore
+*.log
+env.example

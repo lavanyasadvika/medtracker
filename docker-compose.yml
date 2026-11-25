@@ -1,0 +1,108 @@
+services:
+  db:
+    image: postgres:15-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${DB_NAME:-medtracker}
+      POSTGRES_USER: ${DB_USERNAME:-postgres}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-postgres}
+    volumes:
+      - medtracker-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USERNAME:-postgres} -d ${DB_NAME:-medtracker}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: ./server
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_NAME: ${DB_NAME:-medtracker}
+      DB_USERNAME: ${DB_USERNAME:-postgres}
+      DB_PASSWORD: ${DB_PASSWORD:-postgres}
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_EXPIRATION_MS: ${JWT_EXPIRATION_MS:-86400000}
+      JWT_REFRESH_MS: ${JWT_REFRESH_MS:-604800000}
+      REACT_ALLOWED_ORIGINS: ${REACT_ALLOWED_ORIGINS:-http://localhost:3000}
+      GROQ_API_KEY: ${GROQ_API_KEY:-}
+      GROQ_BASE_URL: ${GROQ_BASE_URL:-https://api.groq.com/openai/v1}
+      GROQ_MODEL: ${GROQ_MODEL:-qwen/qwen3.6-27b}
+      GROQ_TIMEOUT_SECONDS: ${GROQ_TIMEOUT_SECONDS:-30}
+      GROQ_MOCK_ENABLED: ${GROQ_MOCK_ENABLED:-true}
+      OPENFDA_BASE_URL: ${OPENFDA_BASE_URL:-https://api.fda.gov}
+      OPENFDA_TIMEOUT_SECONDS: ${OPENFDA_TIMEOUT_SECONDS:-10}
+      ALERT_CRON: ${ALERT_CRON:-0 0 8 * * *}
+      ALERT_EXPIRY_LEAD_DAYS: ${ALERT_EXPIRY_LEAD_DAYS:-30}
+      ALERT_DEFAULT_LOW_STOCK_THRESHOLD: ${ALERT_DEFAULT_LOW_STOCK_THRESHOLD:-10}
+      SMTP_HOST: ${SMTP_HOST:-sandbox.smtp.mailtrap.io}
+      SMTP_PORT: ${SMTP_PORT:-2525}
+      SMTP_USERNAME: ${SMTP_USERNAME:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_SSL_TRUST: ${SMTP_SSL_TRUST:-sandbox.smtp.mailtrap.io}
+      MAIL_FROM: ${MAIL_FROM:-noreply@medtracker.local}
+      ACTUATOR_PASSWORD: ${ACTUATOR_PASSWORD:-actuator-dev}
+      ZIPKIN_ENDPOINT: ${ZIPKIN_ENDPOINT:-http://zipkin:9411/api/v2/spans}
+      TRACING_SAMPLING_PROBABILITY: ${TRACING_SAMPLING_PROBABILITY:-1.0}
+    ports:
+      - "8080:8080"
+
+  frontend:
+    build:
+      context: ./client
+      args:
+        VITE_API_URL: ${VITE_API_URL:-http://localhost:8080/api}
+    restart: unless-stopped
+    depends_on:
+      - backend
+    ports:
+      - "3000:80"
+
+  # ── Observability ──────────────────────────────────────────────
+  zipkin:
+    # Pinned below :3 — that tag's Alpine/JDK 25 build hits an "exec format error"
+    # under Docker Desktop's WSL2 kernel on this machine; 2.24 runs fine.
+    image: openzipkin/zipkin:2.24
+    restart: unless-stopped
+    ports:
+      - "9411:9411"
+
+  prometheus:
+    image: prom/prometheus:v2.55.1
+    restart: unless-stopped
+    volumes:
+      - ./monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - medtracker-prometheus-data:/prometheus
+    depends_on:
+      - backend
+    ports:
+      - "9090:9090"
+
+  grafana:
+    image: grafana/grafana:11.2.0
+    restart: unless-stopped
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    volumes:
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - medtracker-grafana-data:/var/lib/grafana
+    depends_on:
+      - prometheus
+      - zipkin
+    ports:
+      - "3001:3000"
+
+volumes:
+  medtracker-db-data:
+  medtracker-prometheus-data:
+  medtracker-grafana-data:

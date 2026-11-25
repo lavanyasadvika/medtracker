@@ -1,0 +1,1151 @@
+openapi: 3.0.3
+info:
+  title: MedTracker API
+  version: 1.0.0
+  description: Medicine Inventory and Expiry Tracker REST API.
+servers:
+  - url: http://localhost:8080/api
+    description: Local development server
+security:
+  - bearerAuth: []
+tags:
+  - name: Authentication
+    description: User registration, login, and current-user profile endpoints.
+  - name: Medicines
+    description: Medicine inventory CRUD, filtering, and soft-delete endpoints.
+  - name: Scan
+    description: Medicine scan pre-fill pipeline using barcode detection, OpenFDA, and Groq Vision.
+  - name: Alerts
+    description: Scheduled email alerts for medicine expiry and low stock.
+  - name: Reports
+    description: Inventory, expiry, low-stock, CSV, and PDF reporting endpoints.
+  - name: Admin
+    description: ADMIN-only user management and runtime settings endpoints.
+paths:
+  /auth/register:
+    post:
+      tags:
+        - Authentication
+      summary: Register a user
+      description: Registers a user for demo access, hashes the password with BCrypt, defaults is_active to true, and rejects duplicate email addresses with 409.
+      operationId: registerUser
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterRequest'
+            example:
+              name: Demo Admin
+              email: demo.admin@medtracker.local
+              password: Admin@123
+              role: ADMIN
+      responses:
+        '201':
+          description: User registered successfully.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '400':
+          description: Validation failure.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Email already exists.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /auth/login:
+    post:
+      tags:
+        - Authentication
+      summary: Authenticate a user
+      description: Authenticates via Spring Security AuthenticationManager. Bad credentials are returned as 401 by the global handler.
+      operationId: loginUser
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+            example:
+              email: admin@medtracker.local
+              password: Admin@123
+      responses:
+        '200':
+          description: Login successful.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '400':
+          description: Validation failure.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Invalid email or password.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /auth/me:
+    get:
+      tags:
+        - Authentication
+      summary: Get current user profile
+      description: Returns the authenticated user's profile resolved from the Bearer JWT subject.
+      operationId: getCurrentUserProfile
+      responses:
+        '200':
+          description: Current user profile.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '401':
+          description: Missing, invalid, or expired Bearer token.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /medicines:
+    post:
+      tags:
+        - Medicines
+      summary: Add medicine
+      description: Adds a medicine, including manual entries with source=MANUAL. Allowed roles: ADMIN, PHARMACIST. created_by and updated_by are set from the current authenticated user id.
+      operationId: createMedicine
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MedicineDTO'
+            example:
+              drugName: Paracetamol
+              manufacturer: MedLabs
+              category: Analgesic
+              batchNumber: BATCH-001
+              barcodeData: '8901234567890'
+              expiryDate: '2027-01-31'
+              quantity: 25.00
+              price: 12.50
+              lowStockThreshold: 5.00
+              source: MANUAL
+      responses:
+        '201':
+          description: Medicine created successfully.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MedicineDTO'
+        '400':
+          description: Validation failure or expiry date in the past.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Missing, invalid, or expired Bearer token.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Authenticated user role is not allowed to create medicines.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    get:
+      tags:
+        - Medicines
+      summary: List active medicines
+      description: Lists active medicines only. Supports optional filters expiringInDays, lowStock=true, and q for drug-name search. Allowed roles: ADMIN, PHARMACIST, VIEWER, USER.
+      operationId: listMedicines
+      parameters:
+        - name: expiringInDays
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 0
+        - name: lowStock
+          in: query
+          required: false
+          schema:
+            type: boolean
+        - name: q
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Case-insensitive drug-name search text.
+      responses:
+        '200':
+          description: Active medicines.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/MedicineDTO'
+        '401':
+          description: Missing, invalid, or expired Bearer token.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Authenticated user role is not allowed to list medicines.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /medicines/{id}:
+    get:
+      tags:
+        - Medicines
+      summary: Get one medicine
+      description: Returns one active medicine by id. Missing or inactive ids return 404. Allowed roles: ADMIN, PHARMACIST, VIEWER, USER.
+      operationId: getMedicine
+      parameters:
+        - $ref: '#/components/parameters/MedicineId'
+      responses:
+        '200':
+          description: Medicine found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MedicineDTO'
+        '401':
+          description: Missing, invalid, or expired Bearer token.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Authenticated user role is not allowed to get medicines.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Medicine id is missing or inactive.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    put:
+      tags:
+        - Medicines
+      summary: Edit medicine
+      description: Updates an active medicine and sets updated_by from the current authenticated user id. Missing or inactive ids return 404. Allowed roles: ADMIN, PHARMACIST.
+      operationId: updateMedicine
+      parameters:
+        - $ref: '#/components/parameters/MedicineId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MedicineDTO'
+      responses:
+        '200':
+          description: Medicine updated successfully.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MedicineDTO'
+        '400':
+          description: Validation failure.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Missing, invalid, or expired Bearer token.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Authenticated user role is not allowed to edit medicines.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Medicine id is missing or inactive.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    delete:
+      tags:
+        - Medicines
+      summary: Soft-delete medicine
+      description: Soft-deletes an active medicine by setting is_active=false. Never hard deletes. Allowed roles: ADMIN.
+      operationId: deleteMedicine
+      parameters:
+        - $ref: '#/components/parameters/MedicineId'
+      responses:
+        '204':
+          description: Medicine soft-deleted successfully.
+        '401':
+          description: Missing, invalid, or expired Bearer token.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Authenticated user role is not allowed to delete medicines.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Medicine id is missing or inactive.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /medicines/{id}/dispense:
+    post:
+      tags:
+        - Medicines
+      summary: Dispense medicine stock
+      description: Reduces stock quantity for an active medicine. Allowed roles: ADMIN, PHARMACIST, VIEWER. Service validation prevents negative stock before the database CHECK constraint backstop.
+      operationId: dispenseMedicine
+      parameters:
+        - $ref: '#/components/parameters/MedicineId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DispenseRequest'
+            example:
+              quantity: 2.00
+      responses:
+        '200':
+          description: Medicine stock dispensed successfully with updated quantity.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MedicineDTO'
+        '400':
+          description: Validation failure or insufficient stock. Insufficient stock responses include available.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Missing, invalid, or expired Bearer token.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Authenticated user role is not allowed to dispense medicines.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Medicine id is missing or inactive.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /medicines/{id}/restock:
+    put:
+      tags:
+        - Medicines
+      summary: Restock medicine inventory
+      description: Increases stock quantity for an active medicine and updates updated_by from the current JWT user id. Allowed roles: ADMIN, PHARMACIST.
+      operationId: restockMedicine
+      parameters:
+        - $ref: '#/components/parameters/MedicineId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RestockRequest'
+            example:
+              quantity: 10.00
+      responses:
+        '200':
+          description: Medicine stock restocked successfully with updated quantity.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MedicineDTO'
+        '400':
+          description: Validation failure.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Missing, invalid, or expired Bearer token.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Authenticated user role is not allowed to restock medicines.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Medicine id is missing or inactive.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /scan/upload:
+    post:
+      tags:
+        - Scan
+      summary: Scan medicine image
+      description: Uploads a medicine barcode or label image and returns pre-fill data for the React confirmation form. This endpoint never persists medicines; saving still happens through POST /medicines after user confirmation. Allowed roles: ADMIN, PHARMACIST.
+      operationId: uploadMedicineScan
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required:
+                - image
+              properties:
+                image:
+                  type: string
+                  format: binary
+      responses:
+        '200':
+          description: Scan completed. Source is BARCODE for OpenFDA/barcode path or GROQ for label extraction. If OpenFDA misses, manualEntryRequired=true is returned with barcode details.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ScanResultDTO'
+        '400':
+          description: Missing or unreadable upload.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Missing, invalid, or expired Bearer token.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Authenticated user role is not allowed to scan medicines.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '422':
+          description: No barcode was detected and Groq Vision extraction failed; retake or manual entry is required.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /alerts/scheduled:
+    x-internal-scheduled-job: true
+    post:
+      tags:
+        - Alerts
+      summary: Scheduled medicine alert job
+      description: Internal scheduled job executed by Spring Scheduling using cron app.alerts.cron (default 0 0 8 * * *). It is not exposed as an HTTP endpoint. The job emails active ADMIN and PHARMACIST users only; VIEWER users are excluded.
+      operationId: runScheduledAlertsJob
+      responses:
+        '204':
+          description: Job completed without HTTP response body because it is invoked by the scheduler, not REST.
+  /reports/inventory:
+    get:
+      tags:
+        - Reports
+      summary: Inventory report
+      description: Returns all active medicines with name, category, quantity, expiry, and manufacturer. Allowed roles: ADMIN, PHARMACIST, VIEWER, USER.
+      operationId: getInventoryReport
+      responses:
+        '200':
+          description: Active medicine inventory report.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ReportInventoryItem'
+        '401':
+          description: Missing, invalid, or expired Bearer token.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Authenticated user role is not allowed to view reports.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /reports/expiry:
+    get:
+      tags:
+        - Reports
+      summary: Expiry status report
+      description: Returns expired, expiring within app.alerts.expiry-lead-days, and safe buckets. Status colours follow FR-23 as red, amber, and green. Allowed roles: ADMIN, PHARMACIST, VIEWER, USER.
+      operationId: getExpiryReport
+      responses:
+        '200':
+          description: Expiry report grouped into status buckets.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReportExpiry'
+        '401':
+          description: Missing, invalid, or expired Bearer token.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Authenticated user role is not allowed to view reports.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /reports/low-stock:
+    get:
+      tags:
+        - Reports
+      summary: Low-stock report
+      description: Returns active medicines where quantity is at or below the configured item threshold or default low-stock threshold. Allowed roles: ADMIN, PHARMACIST, VIEWER, USER.
+      operationId: getLowStockReport
+      responses:
+        '200':
+          description: Low-stock report.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ReportInventoryItem'
+        '401':
+          description: Missing, invalid, or expired Bearer token.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Authenticated user role is not allowed to view reports.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /reports/{type}/export:
+    get:
+      tags:
+        - Reports
+      summary: Export a report as CSV or PDF
+      description: Downloads inventory, expiry, or low-stock report data as CSV or PDF. Allowed roles: ADMIN, PHARMACIST only.
+      operationId: exportReport
+      parameters:
+        - name: type
+          in: path
+          required: true
+          schema:
+            type: string
+            enum:
+              - inventory
+              - expiry
+              - low-stock
+        - name: format
+          in: query
+          required: false
+          schema:
+            type: string
+            default: csv
+            enum:
+              - csv
+              - pdf
+      responses:
+        '200':
+          description: Report download. Content-Disposition is attachment with a medtracker report filename.
+          headers:
+            Content-Disposition:
+              schema:
+                type: string
+              description: Attachment filename header.
+          content:
+            text/csv:
+              schema:
+                type: string
+                format: binary
+            application/pdf:
+              schema:
+                type: string
+                format: binary
+        '400':
+          description: Unsupported report type or export format.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Missing, invalid, or expired Bearer token.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Authenticated user role is not allowed to export reports.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /admin/users:
+    get:
+      tags:
+        - Admin
+      summary: List users
+      description: Lists all users for ADMIN management. Allowed role: ADMIN only.
+      operationId: adminListUsers
+      responses:
+        '200':
+          description: Users returned successfully.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/AdminUserResponse'
+        '401':
+          description: Missing, invalid, or expired Bearer token.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Authenticated user is not an ADMIN.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    post:
+      tags:
+        - Admin
+      summary: Create user
+      description: Creates a user by delegating to AuthService.register. Allowed role: ADMIN only.
+      operationId: adminCreateUser
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterRequest'
+      responses:
+        '201':
+          description: User created successfully.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '400':
+          description: Validation failure.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Missing, invalid, or expired Bearer token.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Authenticated user is not an ADMIN.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Email already exists.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /admin/users/{id}:
+    put:
+      tags:
+        - Admin
+      summary: Edit user name and role
+      description: Updates a user's display name and role. Allowed role: ADMIN only.
+      operationId: adminUpdateUser
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AdminUpdateUserRequest'
+      responses:
+        '200':
+          description: User updated successfully.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminUserResponse'
+        '400':
+          description: Validation failure.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Missing, invalid, or expired Bearer token.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Authenticated user is not an ADMIN.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: User id is missing.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /admin/users/{id}/deactivate:
+    patch:
+      tags:
+        - Admin
+      summary: Deactivate user
+      description: Soft-deactivates a user by setting is_active=false. Users are never hard-deleted. Allowed role: ADMIN only.
+      operationId: adminDeactivateUser
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '200':
+          description: User deactivated successfully.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminUserResponse'
+        '401':
+          description: Missing, invalid, or expired Bearer token.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Authenticated user is not an ADMIN.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: User id is missing.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /admin/settings:
+    get:
+      tags:
+        - Admin
+      summary: Read runtime admin settings
+      description: Reads expiry lead days and default low-stock threshold from the runtime ConfigurationProperties bean. Allowed role: ADMIN only.
+      operationId: adminGetSettings
+      responses:
+        '200':
+          description: Settings returned successfully.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminSettingsResponse'
+        '401':
+          description: Missing, invalid, or expired Bearer token.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Authenticated user is not an ADMIN.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    put:
+      tags:
+        - Admin
+      summary: Update runtime admin settings
+      description: Updates expiry lead days and default low-stock threshold in memory for v1. Values reset to application config on restart. Allowed role: ADMIN only.
+      operationId: adminUpdateSettings
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AdminSettingsRequest'
+      responses:
+        '200':
+          description: Settings updated successfully.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminSettingsResponse'
+        '400':
+          description: Validation failure.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Missing, invalid, or expired Bearer token.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Authenticated user is not an ADMIN.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  parameters:
+    MedicineId:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+      description: Medicine id.
+  schemas:
+    RegisterRequest:
+      type: object
+      required:
+        - name
+        - email
+        - password
+      properties:
+        name:
+          type: string
+          minLength: 2
+          maxLength: 100
+        email:
+          type: string
+          format: email
+          maxLength: 100
+        password:
+          type: string
+          minLength: 8
+          maxLength: 72
+          format: password
+        role:
+          $ref: '#/components/schemas/Role'
+    LoginRequest:
+      type: object
+      required:
+        - email
+        - password
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+          format: password
+    AuthResponse:
+      type: object
+      properties:
+        token:
+          type: string
+          nullable: true
+          description: JWT access token. Omitted for /auth/me profile responses.
+        tokenType:
+          type: string
+          nullable: true
+          example: Bearer
+        expiresInMs:
+          type: integer
+          format: int64
+          nullable: true
+          example: 86400000
+        role:
+          $ref: '#/components/schemas/Role'
+        name:
+          type: string
+        email:
+          type: string
+          format: email
+    AdminUserResponse:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        name:
+          type: string
+        email:
+          type: string
+          format: email
+        role:
+          $ref: '#/components/schemas/Role'
+        isActive:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+          nullable: true
+        updatedAt:
+          type: string
+          format: date-time
+          nullable: true
+    AdminUpdateUserRequest:
+      type: object
+      required:
+        - name
+        - role
+      properties:
+        name:
+          type: string
+          minLength: 2
+          maxLength: 100
+        role:
+          $ref: '#/components/schemas/Role'
+    AdminSettingsResponse:
+      type: object
+      properties:
+        expiryLeadDays:
+          type: integer
+          minimum: 0
+          maximum: 3650
+        defaultLowStockThreshold:
+          type: number
+          minimum: 0
+          exclusiveMinimum: true
+    AdminSettingsRequest:
+      type: object
+      required:
+        - expiryLeadDays
+        - defaultLowStockThreshold
+      properties:
+        expiryLeadDays:
+          type: integer
+          minimum: 0
+          maximum: 3650
+        defaultLowStockThreshold:
+          type: number
+          minimum: 0
+          exclusiveMinimum: true
+    MedicineDTO:
+      type: object
+      required:
+        - drugName
+        - expiryDate
+        - quantity
+        - source
+      properties:
+        id:
+          type: integer
+          format: int64
+          readOnly: true
+        drugName:
+          type: string
+          maxLength: 200
+        manufacturer:
+          type: string
+          maxLength: 100
+        category:
+          type: string
+          maxLength: 100
+        batchNumber:
+          type: string
+          maxLength: 50
+        barcodeData:
+          type: string
+          maxLength: 100
+        expiryDate:
+          type: string
+          format: date
+          description: Must not be in the past on create.
+        quantity:
+          type: number
+          minimum: 0
+          exclusiveMinimum: true
+        price:
+          type: number
+          minimum: 0
+          exclusiveMinimum: true
+          nullable: true
+        lowStockThreshold:
+          type: number
+          minimum: 0
+          exclusiveMinimum: true
+          nullable: true
+        source:
+          $ref: '#/components/schemas/MedicineSource'
+        isActive:
+          type: boolean
+          readOnly: true
+    DispenseRequest:
+      type: object
+      required:
+        - quantity
+      properties:
+        quantity:
+          type: number
+          minimum: 0
+          exclusiveMinimum: true
+          description: Quantity to subtract from current medicine stock.
+    RestockRequest:
+      type: object
+      required:
+        - quantity
+      properties:
+        quantity:
+          type: number
+          minimum: 0
+          exclusiveMinimum: true
+          description: Quantity to add to current medicine stock.
+    ReportInventoryItem:
+      type: object
+      properties:
+        name:
+          type: string
+        category:
+          type: string
+          nullable: true
+        quantity:
+          type: number
+        expiry:
+          type: string
+          format: date
+        manufacturer:
+          type: string
+          nullable: true
+    ReportExpiryItem:
+      allOf:
+        - $ref: '#/components/schemas/ReportInventoryItem'
+        - type: object
+          properties:
+            status:
+              type: string
+              enum:
+                - green
+                - amber
+                - red
+              description: FR-23 colour status.
+    ReportExpiry:
+      type: object
+      properties:
+        expired:
+          type: array
+          items:
+            $ref: '#/components/schemas/ReportExpiryItem'
+        expiring:
+          type: array
+          items:
+            $ref: '#/components/schemas/ReportExpiryItem'
+        safe:
+          type: array
+          items:
+            $ref: '#/components/schemas/ReportExpiryItem'
+    ScanResultDTO:
+      type: object
+      properties:
+        drugName:
+          type: string
+          maxLength: 200
+          nullable: true
+          description: Name extracted from OpenFDA or Groq. May be null when barcode is detected but OpenFDA has no match.
+        expiryDate:
+          type: string
+          format: date
+          nullable: true
+          description: End-of-month date parsed from Groq MM/YYYY output. OpenFDA barcode lookups usually do not return expiry.
+        source:
+          $ref: '#/components/schemas/MedicineSource'
+        manufacturer:
+          type: string
+          maxLength: 100
+          nullable: true
+        barcode:
+          type: string
+          maxLength: 100
+          nullable: true
+        manualEntryRequired:
+          type: boolean
+          description: True when a barcode was decoded but OpenFDA returned no medicine match.
+        message:
+          type: string
+          maxLength: 500
+          description: User-facing scan outcome message for retake/manual confirmation flows.
+    MedicineSource:
+      type: string
+      enum:
+        - BARCODE
+        - GROQ
+        - MANUAL
+    Role:
+      type: string
+      enum:
+        - ADMIN
+        - USER
+        - PHARMACIST
+        - VIEWER
+    ErrorResponse:
+      type: object
+      properties:
+        timestamp:
+          type: string
+          format: date-time
+        status:
+          type: integer
+        error:
+          type: string
+        message:
+          type: string
+        path:
+          type: string
+        available:
+          type: number
+          nullable: true
+          description: Current available stock quantity, present for insufficient-stock errors.

@@ -1,0 +1,17 @@
+target/
+.mvn/
+mvnw
+mvnw.cmd
+*.iml
+.idea/
+.eclipse/
+.settings/
+.classpath
+.project
+.git
+.gitignore
+
+# Local secrets — never baked into the image; docker-compose supplies
+# equivalent config via environment variables + application-docker.yml
+src/main/resources/application.yml
+src/main/resources/application-local.yml

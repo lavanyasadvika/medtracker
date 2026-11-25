@@ -1,0 +1,12 @@
+global:
+  scrape_interval: 10s
+  evaluation_interval: 10s
+
+scrape_configs:
+  - job_name: medtracker-backend
+    metrics_path: /api/actuator/prometheus
+    static_configs:
+      # Azure Container Instances runs every container in the group on one
+      # shared network namespace/IP, so services reach each other via
+      # localhost + port instead of the docker-compose service DNS names.
+      - targets: ["localhost:8080"]

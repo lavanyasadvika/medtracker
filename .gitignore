@@ -1,0 +1,130 @@
+# =============================================
+# Slingshot & Agent Files
+# =============================================
+.slingshot/
+.slingshot/**
+*.slingshot
+.agent/
+
+# =============================================
+# VS Code
+# =============================================
+.vscode/
+
+# =============================================
+# Office & Document Files
+# =============================================
+*.docx
+*.doc
+*.xlsx
+*.xls
+*.pptx
+*.ppt
+*.pdf
+
+# =============================================
+# OneDrive Sync Folder
+# =============================================
+OneDrive - Publicis Groupe/
+
+# =============================================
+# Maven Build & Package Files
+# =============================================
+target/
+*.jar
+*.war
+*.ear
+*.class
+*.nar
+
+# Maven wrapper
+.mvn/
+mvnw
+mvnw.cmd
+
+# =============================================
+# Java / IDE Files
+# =============================================
+*.iml
+*.ipr
+*.iws
+.idea/
+.eclipse/
+.settings/
+.classpath
+.project
+.factorypath
+bin/
+
+# =============================================
+# Spring Boot
+# =============================================
+spring-shell.log
+
+# =============================================
+# Node / NPM Package Files
+# =============================================
+node_modules/
+package-lock.json
+yarn.lock
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# =============================================
+# OS Files
+# =============================================
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# =============================================
+# Environment & Secrets
+# =============================================
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+*.p12
+*.jks
+azure/azure.env
+!azure/azure.env.example
+
+# =============================================
+# Spring Application Config (contains secrets)
+# =============================================
+application.yml
+application*.yml
+!application-example.yml
+!application-docker.yml
+
+# =============================================
+# Logs
+# =============================================
+*.log
+logs/
+
+# =============================================
+# Test & Coverage Reports
+# =============================================
+/test-results/
+/coverage/
+jacoco.exec
+
+# =============================================
+# Java Package Info Files
+# =============================================
+**/package-info.java
+
+target/
+node_modulle/
+.env
+*.log/
+__pycache__/
+
+.env
+*.env.save
+target/
+node_modules/
+.idea/
